@@ -1,0 +1,27 @@
+services:
+
+  rabbitmq:
+    image: rabbitmq:4.2-management
+    container_name: andesstay-rabbitmq
+
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-andesstay}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-andesstay_dev}
+
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    restart: unless-stopped
+
+volumes:
+  rabbitmq_data:
