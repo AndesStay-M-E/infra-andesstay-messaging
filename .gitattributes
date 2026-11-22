@@ -1,0 +1,5 @@
+# Los scripts y archivos de configuración se montan dentro de contenedores
+# Linux: deben quedar siempre con saltos de línea LF, aunque se editen en Windows.
+*.sh   text eol=lf
+*.conf text eol=lf
+*.yml  text eol=lf

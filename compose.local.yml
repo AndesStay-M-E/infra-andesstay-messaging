@@ -1,151 +1,33 @@
-# AndesStay: local end-to-end stack (Docker Compose V2).
-# From this directory: docker compose -f compose.local.yml --env-file .env up --build -d
-services:
-  rabbitmq:
-    image: rabbitmq:4.2-management
-    ports:
-      - "127.0.0.1:5672:5672"
-      - "127.0.0.1:15672:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-andesstay}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-    restart: unless-stopped
-  bff:
-    build:
-      context: ../ms-andesstay-bff
-    environment:
-      PORT: 8080
-      AZURE_ISSUER_URI: https://login.microsoftonline.com/4fe52189-087c-4613-8660-500431cc0eb9/v2.0
-      AZURE_ALLOWED_AUDIENCES: 85237aa5-9ece-48d3-8767-9698df0efefa,api://85237aa5-9ece-48d3-8767-9698df0efefa
-      RESERVATIONS_URL: http://reservations:8081
-      CATALOG_URL: http://catalog:8082
-      REPORT_URL: http://report:8084
-      AUDIT_URL: http://audit:8085
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:4200}
-      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-false}
-      GRAPH_CLIENT_ID: ${GRAPH_CLIENT_ID:-}
-      GRAPH_CLIENT_SECRET: ${GRAPH_CLIENT_SECRET:-}
-      REGISTRATION_REDIRECT_URL: ${REGISTRATION_REDIRECT_URL:-https://main.d32i73fsq9ui1t.amplifyapp.com/login}
-    depends_on:
-      - reservations
-      - catalog
-      - report
-      - audit
-    ports:
-      - "127.0.0.1:8080:8080"
-    restart: unless-stopped
-  reservations:
-    build:
-      context: ../ms-andesstay-reservations
-    environment:
-      PORT: 8081
-      AZURE_ISSUER_URI: https://login.microsoftonline.com/4fe52189-087c-4613-8660-500431cc0eb9/v2.0
-      AZURE_ALLOWED_AUDIENCES: 85237aa5-9ece-48d3-8767-9698df0efefa,api://85237aa5-9ece-48d3-8767-9698df0efefa
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: ${RABBITMQ_USER:-andesstay}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-    ports:
-      - "127.0.0.1:8081:8081"
-    volumes:
-      - reservations_data:/app/data
-    restart: unless-stopped
-  catalog:
-    build:
-      context: ../ms-andesstay-catalog
-    environment:
-      PORT: 8082
-      AZURE_ISSUER_URI: https://login.microsoftonline.com/4fe52189-087c-4613-8660-500431cc0eb9/v2.0
-      AZURE_ALLOWED_AUDIENCES: 85237aa5-9ece-48d3-8767-9698df0efefa,api://85237aa5-9ece-48d3-8767-9698df0efefa
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: ${RABBITMQ_USER:-andesstay}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-    ports:
-      - "127.0.0.1:8082:8082"
-    volumes:
-      - catalog_data:/app/data
-    restart: unless-stopped
-  notify:
-    build:
-      context: ../ms-andesstay-notify
-    environment:
-      PORT: 8083
-      AZURE_ISSUER_URI: https://login.microsoftonline.com/4fe52189-087c-4613-8660-500431cc0eb9/v2.0
-      AZURE_ALLOWED_AUDIENCES: 85237aa5-9ece-48d3-8767-9698df0efefa,api://85237aa5-9ece-48d3-8767-9698df0efefa
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: ${RABBITMQ_USER:-andesstay}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-    restart: unless-stopped
-  report:
-    build:
-      context: ../ms-andesstay-report
-    environment:
-      PORT: 8084
-      AZURE_ISSUER_URI: https://login.microsoftonline.com/4fe52189-087c-4613-8660-500431cc0eb9/v2.0
-      AZURE_ALLOWED_AUDIENCES: 85237aa5-9ece-48d3-8767-9698df0efefa,api://85237aa5-9ece-48d3-8767-9698df0efefa
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: ${RABBITMQ_USER:-andesstay}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-    ports:
-      - "127.0.0.1:8084:8084"
-    volumes:
-      - report_data:/app/data
-    restart: unless-stopped
-  audit:
-    build:
-      context: ../ms-andesstay-audit
-    environment:
-      PORT: 8085
-      AZURE_ISSUER_URI: https://login.microsoftonline.com/4fe52189-087c-4613-8660-500431cc0eb9/v2.0
-      AZURE_ALLOWED_AUDIENCES: 85237aa5-9ece-48d3-8767-9698df0efefa,api://85237aa5-9ece-48d3-8767-9698df0efefa
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: ${RABBITMQ_USER:-andesstay}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-    ports:
-      - "127.0.0.1:8085:8085"
-    volumes:
-      - audit_data:/app/data
-    restart: unless-stopped
-  rabbit-admin:
-    build:
-      context: ../ms-andesstay-rabbit-admin
-    environment:
-      PORT: 8086
-      AZURE_ISSUER_URI: https://login.microsoftonline.com/4fe52189-087c-4613-8660-500431cc0eb9/v2.0
-      AZURE_ALLOWED_AUDIENCES: 85237aa5-9ece-48d3-8767-9698df0efefa,api://85237aa5-9ece-48d3-8767-9698df0efefa
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: ${RABBITMQ_USER:-andesstay}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-    ports:
-      - "127.0.0.1:8086:8086"
-    restart: unless-stopped
-volumes:
-  rabbitmq_data:
-  catalog_data:
-  reservations_data:
-  report_data:
-  audit_data:
+# =====================================================================
+# AndesStay - TODO en un solo computador (tu PC con Docker Desktop)
+#
+# Junta los tres compose del caso:
+#   mq/compose.yml     -> RabbitMQ (2 nodos en clúster)
+#   kafka/compose.yml  -> 3 ZooKeeper + 3 brokers + Kafka UI + creación de tópicos
+#   apps/compose.yml   -> los 8 microservicios
+#
+# Desde la carpeta infra-andesstay-messaging:
+#   1) copy .env.example .env        (Windows)   |  cp .env.example .env (Linux/Mac)
+#   2) docker compose -f compose.local.yml up -d --build
+#   3) docker compose -f compose.local.yml ps
+#
+# URLs:
+#   BFF ............ http://localhost:8080/actuator/health
+#   RabbitMQ ....... http://localhost:15672  y  http://localhost:15673
+#   Kafka UI ....... http://localhost:8090
+#   Frontend ....... npm start en frontend-andesstay -> http://localhost:4200
+#
+# Apagar:             docker compose -f compose.local.yml down
+# Apagar y BORRAR:    docker compose -f compose.local.yml down -v
+# =====================================================================
+name: andesstay
+
+include:
+  - path: mq/compose.yml
+    env_file: .env
+  - path: kafka/compose.yml
+    env_file: .env
+  - path:
+      - apps/compose.yml
+      - apps/compose.local-wait.yml
+    env_file: .env

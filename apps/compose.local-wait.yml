@@ -1,0 +1,25 @@
+# Solo para el modo "todo en un PC" (compose.local.yml).
+# Hace que los microservicios esperen a RabbitMQ y a que se creen los tópicos
+# de Kafka antes de iniciar. En AWS no se usa (allí la mensajería está en
+# otras EC2 y los microservicios se reconectan solos).
+services:
+  reservations:
+    depends_on: &wait-rabbit-and-kafka
+      rabbitmq-1:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+  report:
+    depends_on: *wait-rabbit-and-kafka
+  audit:
+    depends_on: *wait-rabbit-and-kafka
+  kafka-admin:
+    depends_on: *wait-rabbit-and-kafka
+  catalog:
+    depends_on: &wait-rabbit
+      rabbitmq-1:
+        condition: service_healthy
+  notify:
+    depends_on: *wait-rabbit
+  rabbit-admin:
+    depends_on: *wait-rabbit

@@ -1,0 +1,159 @@
+# =====================================================================
+# AndesStay - Microservicios  (EC2 "ec2-apps")
+#
+# Las carpetas de los microservicios deben estar al lado de este repo:
+#
+#   andesstay/
+#     infra-andesstay-messaging/   <- este repo
+#     ms-andesstay-bff/
+#     ms-andesstay-reservations/
+#     ms-andesstay-catalog/
+#     ms-andesstay-notify/
+#     ms-andesstay-report/
+#     ms-andesstay-audit/
+#     ms-andesstay-rabbit-admin/
+#     ms-andesstay-kafka-admin/
+#
+# Levantar SOLO las apps (en AWS, con RabbitMQ y Kafka en otras EC2):
+#   docker compose -f apps/compose.yml --env-file .env up -d --build
+#
+# En AWS el archivo .env debe tener las IP PRIVADAS de ec2-mq y ec2-kafka:
+#   RABBITMQ_ADDRESSES=10.0.1.20:5672,10.0.1.20:5673
+#   KAFKA_BOOTSTRAP_SERVERS=10.0.1.30:9092,10.0.1.30:9093,10.0.1.30:9094
+# Si esas variables no existen, se usan los nombres de Docker (modo PC local).
+#
+# Solo el BFF (8080) queda abierto hacia afuera: lo llama AWS API Gateway.
+# El resto se publica en 127.0.0.1 (solo para probar desde la misma máquina).
+# =====================================================================
+name: andesstay-apps
+
+# ---------- Variables comunes (se reutilizan con <<: *nombre) ----------
+x-azure-env: &azure-env
+  AZURE_ISSUER_URI: ${AZURE_ISSUER_URI:-https://login.microsoftonline.com/4fe52189-087c-4613-8660-500431cc0eb9/v2.0}
+  AZURE_ALLOWED_AUDIENCES: ${AZURE_ALLOWED_AUDIENCES:-85237aa5-9ece-48d3-8767-9698df0efefa,api://85237aa5-9ece-48d3-8767-9698df0efefa}
+
+x-rabbit-env: &rabbit-env
+  # Los dos nodos del clúster: si uno no responde, el cliente usa el otro.
+  RABBITMQ_ADDRESSES: ${RABBITMQ_ADDRESSES:-rabbitmq-1:5672,rabbitmq-2:5672}
+  RABBITMQ_USER: ${RABBITMQ_USER:-andesstay}
+  RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Define RABBITMQ_PASSWORD en el archivo .env}
+
+x-rabbit-consumer-env: &rabbit-consumer-env
+  # Milisegundos que el consumidor "retiene" cada mensaje antes de procesarlo,
+  # para que se alcance a ver en la consola de RabbitMQ (Ready / Unacked).
+  RABBIT_PROCESSING_DELAY_MS: ${RABBIT_PROCESSING_DELAY_MS:-10000}
+
+x-kafka-env: &kafka-env
+  KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka-1:29092,kafka-2:29092,kafka-3:29092}
+
+x-tz-env: &tz-env
+  # Hora de Chile dentro de los contenedores (sin esto Java usa UTC y las
+  # fechas de vouchers, tickets y reservas salen con 3 horas de diferencia).
+  TZ: America/Santiago
+
+services:
+
+  bff:
+    build: ../../ms-andesstay-bff
+    environment:
+      <<: [*azure-env, *tz-env]
+      PORT: 8080
+      RESERVATIONS_URL: http://reservations:8081
+      CATALOG_URL: http://catalog:8082
+      REPORT_URL: http://report:8084
+      AUDIT_URL: http://audit:8085
+      RABBIT_ADMIN_URL: http://rabbit-admin:8086
+      KAFKA_ADMIN_URL: http://kafka-admin:8087
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:4200}
+      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-false}
+      GRAPH_CLIENT_ID: ${GRAPH_CLIENT_ID:-}
+      GRAPH_CLIENT_SECRET: ${GRAPH_CLIENT_SECRET:-}
+      REGISTRATION_REDIRECT_URL: ${REGISTRATION_REDIRECT_URL:-https://main.d32i73fsq9ui1t.amplifyapp.com/login}
+    ports:
+      - "8080:8080"
+    depends_on:
+      - reservations
+      - catalog
+      - report
+      - audit
+      - rabbit-admin
+      - kafka-admin
+    restart: unless-stopped
+
+  reservations:
+    build: ../../ms-andesstay-reservations
+    environment:
+      <<: [*azure-env, *rabbit-env, *kafka-env, *tz-env]
+      PORT: 8081
+      CATALOG_URL: http://catalog:8082
+    ports:
+      - "127.0.0.1:8081:8081"
+    volumes:
+      - reservations_data:/app/data
+    restart: unless-stopped
+
+  catalog:
+    build: ../../ms-andesstay-catalog
+    environment:
+      <<: [*azure-env, *rabbit-env, *rabbit-consumer-env, *tz-env]
+      PORT: 8082
+    ports:
+      - "127.0.0.1:8082:8082"
+    volumes:
+      - catalog_data:/app/data
+    restart: unless-stopped
+
+  notify:
+    build: ../../ms-andesstay-notify
+    environment:
+      <<: [*rabbit-env, *rabbit-consumer-env, *tz-env]
+    restart: unless-stopped
+
+  report:
+    build: ../../ms-andesstay-report
+    environment:
+      <<: [*azure-env, *rabbit-env, *rabbit-consumer-env, *kafka-env, *tz-env]
+      PORT: 8084
+      # Retardo artificial por evento Kafka (0 = sin retardo). Subirlo a 3000
+      # sirve para mostrar en Kafka UI cómo crece y baja el consumer lag.
+      KAFKA_PROCESSING_DELAY_MS: ${KAFKA_PROCESSING_DELAY_MS:-0}
+    ports:
+      - "127.0.0.1:8084:8084"
+    volumes:
+      - report_data:/app/data
+    restart: unless-stopped
+
+  audit:
+    build: ../../ms-andesstay-audit
+    environment:
+      <<: [*azure-env, *kafka-env, *tz-env]
+      PORT: 8085
+    ports:
+      - "127.0.0.1:8085:8085"
+    volumes:
+      - audit_data:/app/data
+    restart: unless-stopped
+
+  rabbit-admin:
+    build: ../../ms-andesstay-rabbit-admin
+    environment:
+      <<: [*azure-env, *rabbit-env, *tz-env]
+      PORT: 8086
+    ports:
+      - "127.0.0.1:8086:8086"
+    restart: unless-stopped
+
+  kafka-admin:
+    build: ../../ms-andesstay-kafka-admin
+    environment:
+      <<: [*azure-env, *kafka-env, *tz-env]
+      PORT: 8087
+    ports:
+      - "127.0.0.1:8087:8087"
+    restart: unless-stopped
+
+volumes:
+  reservations_data:
+  catalog_data:
+  report_data:
+  audit_data:
